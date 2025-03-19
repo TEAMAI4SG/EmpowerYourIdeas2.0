@@ -1,0 +1,5 @@
+[theme]
+primaryColor = "#2b7d3f"  # Seagreen buttons
+backgroundColor = "#e8f9ee"  # Light honeydew green background
+secondaryBackgroundColor = "#d6f5e3"  # Slightly darker sidebar
+font = "sans serif"
