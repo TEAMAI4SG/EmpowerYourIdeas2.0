@@ -4,233 +4,143 @@ import PyPDF2
 import docx
 import re
 
-# --- Load API key correctly from secrets.toml ---
-openai.api_key = st.secrets["OPENAI_API_KEY"] 
+# --- Load API key from secrets.toml ---
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+client = openai.OpenAI()
 
-# --- Image path (static file in repo, NOT from secrets) ---
-image_path = "Logo.jpg"  # Direct reference to image stored in the repo
+# --- Image path (consistently used) ---
+image_path = "Logo.jpg"
+st.sidebar.image(image_path)
 
-# --- Page config ---
-st.set_page_config(layout="wide", initial_sidebar_state="expanded")
-
-# Scoped CSS in Streamlit for Adaptive Chat Bubbles
-st.markdown("""
-    <style>
-        .chat-container {
-            display: flex;
-            align-items: flex-start;
-            margin-bottom: 12px;
-        }
-
-        .chat-avatar {
-            margin-right: 8px;
-            font-size: 22px;
-            min-width: 30px;
-            text-align: center;
-        }
-
-        .chat-bubble {
-            max-width: 500px;
-            width: fit-content;
-            padding: 12px 18px;
-            border-radius: 16px;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            box-shadow: 0px 2px 6px rgba(0,0,0,0.1);
-            line-height: 1.5;
-        }
-
-        .chat-bubble * {
-            margin: 0;
-            padding: 0;
-        }
-
-        .chat-bubble ul {
-            padding-left: 20px;
-            margin: 6px 0;
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- Sidebar with logo and title ---
-st.sidebar.image("Logo.jpg", use_container_width=True)
-
-# --- Header and caption ---
+# --- Header and Caption ---
 st.header("Empower Your Ideas", divider="blue")
-st.caption("""Welcome to Empower Your Ideas! 
-A platform designed to help students analyze real-world city and water challenges, like those faced by the City of San Jose and Valley Water.""")
+st.caption("Welcome to a platform designed to help students analyze real-world city and water challenges. Explore urban planning, environmental issues, or community well-being, and brainstorm impactful solutions!")
 
 # --- Session Initialization ---
-if 'conversation' not in st.session_state:
-    st.session_state['conversation'] = []
-if 'current_problem' not in st.session_state:
-    st.session_state['current_problem'] = ""
-if 'analysis_completed' not in st.session_state:
-    st.session_state['analysis_completed'] = False
+for key, default in [('conversation', []), ('current_problem', ""), ('analysis_completed', False)]:
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # --- AI Call Function ---
 def get_analysis(prompt, model="gpt-3.5-turbo"):
-    client = openai.OpenAI()
     completion = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "You are an expert in analyzing real-world city problems for students."},
+            {
+                "role": "system",
+                "content": f"""
+                You are an expert in analyzing real-world city and community challenges, particularly those relevant to the City of San Jose and Valley Water.  
+                
+                **Instructions for Formatting:**  
+                - Use clear section headers (e.g., "Broader Context", "Stakeholders and Challenges").  
+                - Organize information into **concise paragraphs** for readability.  
+                - Use **bullet points only where necessary** (avoid overusing lists).  
+                - Avoid unnecessary formatting symbols (e.g., "**", "##", "--").  
+                - Reference provided sources (website links/files) when relevant.  
+                
+                **Analysis Outline:**  
+                1. **Broader Context** – Explain how this problem fits into larger economic, social, or environmental issues.  
+                2. **Stakeholders and Their Challenges** – Discuss the key groups affected and their specific difficulties.  
+                3. **Alternative Methods and Tools** – Suggest possible strategies, technologies, or policies.  
+                4. **Budget Considerations** – Identify financial challenges and funding opportunities.  
+                5. **Existing Efforts and Initiatives** Highlight ongoing city programs or policies.  
+                6. **Challenges in Implementation** – Discuss barriers (political, technical, financial).  
+                7. **Potential Impact if Unresolved**  Explain the risks of inaction.  
+                8. **Overall Recommendation** – Summarize the best approach and provide a call to action.  
+                
+                **Keep responses well-structured, concise, and easy to read.**  
+                """
+            },
             {"role": "user", "content": prompt},
         ]
     )
     return completion.choices[0].message.content
-
-# --- File Parsing ---
+    
+# --- File Parsing Function ---
 def parse_files(files):
-    content = ""
+    insights = []
     for file in files:
         ext = file.name.split(".")[-1].lower()
+        text = ""
         if ext == "txt":
-            content += file.getvalue().decode("utf-8") + "\n"
+            text = file.getvalue().decode("utf-8")
         elif ext == "pdf":
             pdf_reader = PyPDF2.PdfReader(file)
-            content += "\n".join([page.extract_text() for page in pdf_reader.pages if page.extract_text()]) + "\n"
+            text = "\n".join(page.extract_text() for page in pdf_reader.pages if page.extract_text())
         elif ext == "docx":
             doc = docx.Document(file)
-            content += "\n".join([p.text for p in doc.paragraphs]) + "\n"
-    return content
+            text = "\n".join(p.text for p in doc.paragraphs)
+        snippet = text[:500].replace("\n", " ")
+        insights.append(f"📄 **{file.name}** (excerpt): {snippet}...")
+    return "\n".join(insights)
 
-# --- Clean and Convert Markdown to HTML ---
-def convert_markdown_to_html(text):
-    text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', text)  # Bold
-    text = re.sub(r'\n-', r'<br>•', text)  # Bullet points
-    text = re.sub(r'\n', r'<br>', text)  # Line breaks
-    return text.strip()
+# --- Website Summary Function ---
+def summarize_links(links):
+    summaries = []
+    for link in links:
+        try:
+            summary = get_analysis(f"Summarize concisely: {link}")
+            summaries.append(f"🔗 **[{link}]({link})**: {summary}")
+        except:
+            summaries.append(f"🔗 **[{link}]({link})**: No summary available.")
+    return "\n".join(summaries)
 
-# --- Problem Input Section (if no problem yet) ---
+# --- Display AI Response (Only if a problem is set) ---
+if st.session_state['current_problem']:
+    st.subheader("Analysis Results")
+
+    # Display the AI response directly (No user messages, No text bubbles)
+    for entry in st.session_state['conversation']:
+        st.markdown(entry['ai'])  # Just show AI output as Markdown
+
+    # --- Move "Start New Problem" Button Here ---
+    if st.button("🔄 Start New Problem"):
+        st.session_state['conversation'] = []
+        st.session_state['current_problem'] = ""
+        st.session_state['analysis_completed'] = False
+        st.rerun()
+
+# --- Problem Input Handling ---
 if not st.session_state['current_problem']:
     st.subheader("Let's Analyze a Real-World Problem!")
-
+    
     problem = st.text_input("Describe the problem you are analyzing:", placeholder="e.g., How to increase foot traffic outside downtown San Jose")
-    links = st.text_area("Add links or references (optional, one per line):", placeholder="https://example.com")
-    uploaded_files = st.file_uploader("Upload supporting documents (PDF, TXT, DOCX):", type=["pdf", "txt", "docx"], accept_multiple_files=True)
+    links = st.text_area(
+    "Add links or references (separate multiple links with commas):",
+    placeholder="e.g., https://example1.com, https://example2.com"
+)
+    uploaded_files = st.file_uploader("Upload supporting documents:", type=["pdf", "txt", "docx"], accept_multiple_files=True)
 
     if st.button("Analyze the Problem") and problem:
         st.session_state['current_problem'] = problem
+        summarized_links = summarize_links(links.split("\n"))
+        summarized_files = parse_files(uploaded_files)
 
-        combined_links = ", ".join([link.strip() for link in links.split("\n") if link.strip()]) if links else "None provided"
-        doc_content = parse_files(uploaded_files)
-
-        # --- Build AI Prompt ---
         prompt = f"""
-        You are an expert in analyzing real-world city and community problems, including those addressed by the City of San Jose and Valley Water.
+        **Problem Description:** {problem}
 
-        Please provide a **clearly organized and visually appealing analysis** that is easy to read and student-friendly. 
+        **Relevant Website Links (if available):** {summarized_links if summarized_links else "No links provided."}
 
-        ➡️ Avoid using numbered lists like "1.", "2.", etc.  
-        ➡️ Avoid leading emojis in the section titles.  
-        ➡️ Use **bolded section headings** (example: **Broader Context**) to organize each part.  
-        ➡️ Use bullet points for ideas and explanations.  
-        ➡️ Add line breaks between sections for readability.  
-        ➡️ Avoid academic or overly formal language — make it **clear, direct, and approachable for brainstorming**.  
+        **Insights from Uploaded Files (if available):** {summarized_files if summarized_files else "No files uploaded."}
 
-        Follow this structure:
-
-        **Broader Context**  
-        - Explain how this problem connects to larger social, environmental, or economic issues.
-
-        **Stakeholders and Their Specific Challenges**  
-        - **City Departments:** (e.g., budget constraints, operational inefficiencies)  
-        - **Residents:** (e.g., quality of life, accessibility issues)  
-        - **Businesses:** (e.g., economic impact, low foot traffic)  
-        - **Marginalized Communities:** (e.g., equity concerns, lack of representation)
-
-        **Alternative Methods and Tools**  
-        - Suggest creative tools, data sources, or strategies (e.g., alternatives to Placer.AI for foot traffic data).
-
-        **Budget Considerations and Constraints**  
-        - Describe how city budgets and funding impact solutions. Mention funding gaps or limitations.
-
-        **Existing Efforts and Initiatives**  
-        - Describe current city programs, policies, or community responses working on this issue.
-
-        **Challenges in Implementation**  
-        - Outline political, technical, social, or financial barriers to solutions.
-
-        **Potential Impact if Unresolved**  
-        - Explain who would be affected if this problem continues and how it might escalate over time.
-
-        **Problem Provided:** {problem}  
-        **References:** {combined_links}  
-        **Supporting Files (summary if available):** {doc_content[:1000] if doc_content else 'No files uploaded'}
+        Use these insights to generate a **structured analysis** and actionable recommendations.
         """
 
-        # --- Get AI response & clean ---
         response = get_analysis(prompt)
         st.session_state['conversation'].append({'user': problem, 'ai': response})
         st.session_state['analysis_completed'] = True
 
-# --- Conversation Flow (if problem is set) ---
+# --- Display AI Response (Only if a problem is set) ---
 if st.session_state['current_problem']:
-    st.subheader("💬 Ongoing Analysis & Conversation")
-    st.markdown(f"**Problem Being Analyzed:** _{st.session_state['current_problem']}_")
+    st.subheader("Analysis Results")
 
-    # --- Conversation History --- (chat bubble style)
-    def user_message(text):
-        st.markdown(f"""
-        <div class='chat-container'>
-            <div class='chat-avatar'>👤</div>
-            <div style='
-                background-color: var(--background-color);  /* Adapt to theme */
-                color: var(--text-color);  /* Adapt to theme */
-                padding: 12px 18px;
-                border-radius: 16px;
-                border: 1px solid rgba(0,0,0,0.1); /* Optional: subtle border */
-                max-width: 500px;
-                width: fit-content;
-                line-height: 1.5;
-            '>
-                {text}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    def ai_card(text):
-        html_text = convert_markdown_to_html(text)
-        st.markdown(f"""
-        <div class='chat-container'>
-            <div class='chat-avatar'>🤖</div>
-            <div style='
-                background-color: var(--background-color);  /* Adapt to theme */
-                color: var(--text-color);  /* Adapt to theme */
-                padding: 16px 20px;
-                border-radius: 16px;
-                border: 1px solid rgba(0,0,0,0.1); /* Optional: subtle border for contrast */
-                max-width: 750px;
-                width: fit-content;
-                line-height: 1.7;
-                font-size: 16px;
-            '>
-                {html_text}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
+    # Display the AI response directly (No user messages, No text bubbles)
     for entry in st.session_state['conversation']:
-        user_message(entry['user'])  # user input remains a bubble
-        ai_card(entry['ai'])         # AI analysis appears in a large readable card
+        st.markdown(entry['ai'])  # Just show AI output as Markdown
 
-    # --- Follow-up section ---
-    with st.form(key="follow_up_form", clear_on_submit=True):
-        follow_up = st.text_input("💬 Ask a follow-up question:", placeholder="Type your follow-up here...")
-        submitted = st.form_submit_button("Submit Follow-Up")
-
-    if submitted and follow_up:
-        # --- Prepare context and get AI response ---
-        context = "\n".join([f"User: {c['user']}\nAI: {c['ai']}" for c in st.session_state['conversation']])
-        follow_up_response = get_analysis(f"{context}\nUser: {follow_up}\nAI:")
-        st.session_state['conversation'].append({'user': follow_up, 'ai': follow_up_response})
-        st.rerun()
-
-    # --- Start a new problem ---
+    # --- Move "Start New Problem" Button Here ---
     if st.button("🔄 Start New Problem"):
-        st.session_state['conversation'], st.session_state['current_problem'], st.session_state['analysis_completed'] = [], "", False
+        st.session_state['conversation'] = []
+        st.session_state['current_problem'] = ""
+        st.session_state['analysis_completed'] = False
         st.rerun()
-
-# --- Footer ---
-st.caption("We hope this analysis and conversation help you better understand the problem. You can continue asking questions or start a new analysis anytime!")
