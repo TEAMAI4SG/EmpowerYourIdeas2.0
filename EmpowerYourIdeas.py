@@ -99,4 +99,4 @@ with st.form(key="chat"):
 
             # Generate an image only if 'major' is provided (optional)
             #if major.strip():  
-                #st.image(get_image(major), caption="Generated Image")
+                #st.image(get_image(major), caption="Generated Image"
