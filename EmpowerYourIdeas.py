@@ -74,8 +74,7 @@ with st.form(key="chat"):
     articles = st.text_area("Enter the website links associated with your chosen problem:")
     technologies = st.multiselect("**Select the technologies you're interested in:**", ["Text Generation", "Image Generation", "Speech to Text", "Text Summarization", "Key Point Extraction", "Action Item Extraction", "Sentiment Analysis", "Language Translation", "Text to Speech", "Computer Vision", "Chatbot"])
     oth_technologies = st.text_input("If your preferred technologies aren't listed, enter them here:")
-    datasets = st.text_input("List any datasets you might consider including:")
-    major = st.text_input("Enter the subject or major you want an image for:")
+    datasets = st.text_input("List any datasets that could support your solution:")
     submitted = st.form_submit_button("Submit")
 
     prompt = f"For a community member solving {problem} who is interested in experimenting with {technologies}, reading {articles}, and plans to use {datasets}"
@@ -99,5 +98,5 @@ with st.form(key="chat"):
             st.write(response_text)
 
             # Generate an image only if 'major' is provided (optional)
-            if major.strip():  
-                st.image(get_image(major), caption="Generated Image")
+            #if major.strip():  
+                #st.image(get_image(major), caption="Generated Image")
